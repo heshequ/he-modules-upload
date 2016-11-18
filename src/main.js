@@ -10,8 +10,8 @@ require('he-date-format')
 /**
  * 定义生成图片的根目录
  */
-const tempPath = './temp'
-const uploadPath = './upload'
+const tempPath = path.join(process.cwd(), 'data/temp')
+const uploadPath = path.join(process.cwd(), 'data/upload')
 
 /**
  * 添加body中间件
@@ -41,9 +41,12 @@ const validArgs = function (fields) {
   }
 
   // 无上传文件
-  if (fields.files === undefined || f.files.length === 0) {
+  if (fields.files === undefined || fields.files.length === 0) {
     return false
   }
+
+  // 返回成功
+  return true
 }
 
 /**
@@ -65,14 +68,14 @@ const validFile = function (exts, max, file) {
 /**
  * 获取文件名
  */
-const getFilename = function (ext) {
+const getFilename = function (ext, fields) {
   let timestamp = _.now()
   let date = new Date(timestamp)
-  let dir = uploadPath + '/' + date.format('yyyyMMdd')
-  let file = timestamp + '.' + ext
+  let dir = uploadPath + '/' + fields.project + '/' + fields.type + '/' + date.format('yyyyMMdd')
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir)
   }
+  let file = timestamp + ext
   return dir + '/' + file
 }
 
@@ -87,10 +90,12 @@ router.post('/', ctx => {
 
   // 验证参数是否合格，分解上传文件数组验证参数
   if (!validArgs(fields)) {
-    ctx.body = ''
+    ctx.body = 'arg error'
+    return
   }
 
   // 获取验证条目时的变量
+  // image/png, image/jpg, image/jpeg, image/gif
   let exts = _.split(fields.ext, ',')
   let max = fields.max
 
@@ -100,7 +105,7 @@ router.post('/', ctx => {
       valid: false,
       temp: ''
     }
-    if (validFile(ext, max, file)) {
+    if (validFile(exts, max, file)) {
       item.valid = true
       item.temp = file.path
     }
@@ -109,16 +114,26 @@ router.post('/', ctx => {
 
   // 将文件从临时目录转移到上传目录
   for (let item of items) {
+    let data = {
+      success: false,
+      path: ''
+    }
     if (!item.valid) {
+      datas.push(data)
       continue
     }
 
     // 获取上传文件的保存名，并保存文件
-    let ext = path.extname(file.path)
-    let filename = uploadPath + '/' + fields.project + '/' + fields.type + '/' + getFilename(ext)
+    let ext = path.extname(item.temp)
+    let filename = getFilename(ext, fields)
     fs.rename(item.temp, filename, function(err) {
-      throw err
+      if (err) {
+        throw err
+      }
     })
+
+    // 返回成功
+    ctx.body = 'success'
   }
 })
 
@@ -127,5 +142,5 @@ router.post('/', ctx => {
  */
 app.use(router.routes())
 app.use(router.allowedMethods())
-app.listen(3000)
+app.listen(3100)
 
