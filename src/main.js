@@ -4,6 +4,7 @@ const body = require('koa-better-body')
 const router = require('koa-router')()
 const path = require('path')
 const fs = require('fs')
+const sheet = require('he-sheet')
 const app = new Koa()
 require('he-date-format')
 
@@ -29,24 +30,24 @@ app.use(body({
 const validArgs = function (fields) {
   // 无参数
   if (fields === undefined) {
-    return false
+    return 10001
   }
 
   // 缺失子参数
   let args = ['project', 'type', 'max', 'ext']
   for (let arg of args) {
     if (fields[arg] === undefined && _.trim(fields[arg]) === '') {
-      return false
+      return 10002
     }
   }
 
   // 无上传文件
   if (fields.files === undefined || fields.files.length === 0) {
-    return false
+    return 50003
   }
 
   // 返回成功
-  return true
+  return 0
 }
 
 /**
@@ -57,12 +58,20 @@ const validArgs = function (fields) {
  * @return Boolean 上传文件验证成功返回true，失败返回false
  */
 const validFile = function (exts, max, file) {
+  let type = false
   for (let ext of exts) {
-    if (file.type === _.trim(ext) && file.size <= max) {
-      return true
+    if (file.type === _.trim(ext)) {
+      type = true
+      break
     }
   }
-  return false
+  if (!type) {
+    return 50002
+  }
+  if (file.size > max) {
+    return 50001
+  }
+  return 0
 }
 
 /**
@@ -89,8 +98,8 @@ router.post('/', ctx => {
   let datas = []
 
   // 验证参数是否合格，分解上传文件数组验证参数
-  if (!validArgs(fields)) {
-    ctx.body = 'arg error'
+  if (validArgs(fields) !== 0) {
+    ctx.body = sheet[validArgs(fields)]
     return
   }
 
@@ -101,11 +110,13 @@ router.post('/', ctx => {
 
   // 验证条目, 并将条目添加到items数组
   for (let file of fields.files) {
+    let errcode = validFile(exts, max, file)
     let item = {
       valid: false,
-      temp: ''
+      temp: '',
+      errcode: errcode
     }
-    if (validFile(exts, max, file)) {
+    if (errcode === 0) {
       item.valid = true
       item.temp = file.path
     }
@@ -116,12 +127,15 @@ router.post('/', ctx => {
   for (let item of items) {
     let data = {
       success: false,
+      message: '',
       path: ''
     }
     if (!item.valid) {
+      data.message = sheet[item.errcode].error
       datas.push(data)
       continue
     }
+    
 
     // 获取上传文件的保存名，并保存文件
     let ext = path.extname(item.temp)
@@ -131,10 +145,17 @@ router.post('/', ctx => {
         throw err
       }
     })
-
-    // 返回成功
-    ctx.body = 'success'
+    data.success = true
+    data.path = filename
+    datas.push(data)
   }
+  
+  //定义返回值result
+  let result = sheet[0]
+  result.data = datas
+
+  // 返回成功
+  ctx.body = result
 })
 
 /**
