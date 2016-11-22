@@ -4,7 +4,7 @@ const body = require('koa-better-body')
 const router = require('koa-router')()
 const path = require('path')
 const fs = require('fs')
-const sheet = require('he-sheet')
+const sheet = require('he-components-sheet')
 const app = new Koa()
 require('he-date-format')
 
@@ -89,9 +89,71 @@ const getFilename = function (ext, fields) {
 }
 
 /**
- * 上传路由
+ * 单图片上传路由
  */
-router.post('/', ctx => {
+router.post('/single', ctx => {
+  // 取参数别名，上传文件信息数组
+  let fields = ctx.request.fields
+
+  // 验证参数是否合格，分解上传文件数组验证参数
+  if (validArgs(fields) !== 0) {
+    ctx.body = sheet[validArgs(fields)]
+    return
+  }
+
+  // 获取验证条目时的变量
+  // image/png, image/jpg, image/jpeg, image/gif
+  let exts = _.split(fields.ext, ',')
+  let max = fields.max
+
+  // 验证条目, 并将条目添加到item
+  let file = fields.files[0]
+  let errcode = validFile(exts, max, file)
+
+  let item = {
+    valid: false,
+    temp: '',
+    errcode: errcode
+  }
+  if (errcode === 0) {
+    item.valid = true
+    item.temp = file.path
+  }
+
+  // 将文件从临时目录转移到上传目录
+  let data = {
+    success: false,
+    message: '',
+    path: ''
+  }
+  if (!item.valid) {
+    data.message = sheet[item.errcode].error
+  } else {
+    // 获取上传文件的保存名，并保存文件
+    let ext = path.extname(item.temp)
+    let filename = getFilename(ext, fields)
+    fs.rename(item.temp, filename, function (err) {
+      if (err) {
+        throw err
+      }
+    })
+    data.success = true
+    data.path = filename
+  }
+
+  // 定义返回值result
+  let result = sheet[0]
+  // 为了和多图片上传返回格式一致, 在data外围加一层数组
+  result.data = [data]
+
+  // 返回成功
+  ctx.body = result
+})
+
+/**
+ * 多图片上传路由
+ */
+router.post('/multi', ctx => {
   // 取参数别名，上传文件信息数组
   let fields = ctx.request.fields
   let items = []
@@ -135,12 +197,11 @@ router.post('/', ctx => {
       datas.push(data)
       continue
     }
-    
 
     // 获取上传文件的保存名，并保存文件
     let ext = path.extname(item.temp)
     let filename = getFilename(ext, fields)
-    fs.rename(item.temp, filename, function(err) {
+    fs.rename(item.temp, filename, function (err) {
       if (err) {
         throw err
       }
@@ -149,8 +210,8 @@ router.post('/', ctx => {
     data.path = filename
     datas.push(data)
   }
-  
-  //定义返回值result
+
+  // 定义返回值result
   let result = sheet[0]
   result.data = datas
 
@@ -164,4 +225,3 @@ router.post('/', ctx => {
 app.use(router.routes())
 app.use(router.allowedMethods())
 app.listen(3100)
-
